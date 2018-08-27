@@ -49,7 +49,7 @@ public class MainActivity extends AppCompatActivity {
                 // 后置摄像头信息
                 mBackCameraId = cameraId;
                 mBackCameraInfo = cameraInfo;
-            } else if (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT){
+            } else if (cameraInfo.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
                 // 前置摄像头信息
                 mFrontCameraId = cameraId;
                 mFrontCameraInfo = cameraInfo;
@@ -64,7 +64,6 @@ public class MainActivity extends AppCompatActivity {
         if (mCamera != null) {
             throw new RuntimeException("相机已经被开启，无法同时开启多个相机实例！");
         }
-
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
             if (hasFrontCamera()) {
                 // 优先开启前置摄像头
@@ -107,8 +106,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onStart() {
-        super.onStart();
+    protected void onResume() {
+        super.onResume();
         // 动态权限检查
         if (!isRequiredPermissionsGranted() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             requestPermissions(REQUIRED_PERMISSIONS, REQUEST_PERMISSIONS_CODE);
@@ -118,8 +117,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    protected void onStop() {
-        super.onStop();
+    protected void onPause() {
+        super.onPause();
         closeCamera();
     }
 
@@ -135,43 +134,6 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         return true;
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_PERMISSIONS_CODE) {
-            for (int result : grantResults) {
-                if (result == PackageManager.PERMISSION_DENIED) {
-                    onRequiredPermissionsDenied();
-                    return;
-                }
-            }
-            onRequiredPermissionsGranted();
-        }
-    }
-
-    /**
-     * 当任何权限被用户拒绝的时候触发该方法，我们弹窗通知用户权限被禁用，只能关闭程序。
-     */
-    private void onRequiredPermissionsDenied() {
-        AlertDialog.Builder dialogBuilder = new AlertDialog.Builder(this);
-        dialogBuilder.setTitle("权限检查");
-        dialogBuilder.setMessage("检查到相关权限被拒绝，程序无法正常运行！");
-        dialogBuilder.setNeutralButton("关闭程序", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                finish();
-            }
-        });
-        dialogBuilder.show();
-    }
-
-    /**
-     * 当所有权限都被授予的时候回调该方法。
-     */
-    private void onRequiredPermissionsGranted() {
-        openCamera();
     }
 
     @Override
