@@ -18,6 +18,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
+import android.widget.Button;
 
 import java.io.IOException;
 import java.util.List;
@@ -51,8 +52,13 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
 
     @Nullable
     private Camera mCamera;
-    private int mCameraId;
+    private int mCameraId = -1;
     private Camera.CameraInfo mCameraInfo;
+
+    @Nullable
+    private SurfaceHolder mPreviewSurface;
+    private int mPreviewSurfaceWidth;
+    private int mPreviewSurfaceHeight;
 
     @Override
     public boolean handleMessage(Message msg) {
@@ -90,17 +96,18 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
         setContentView(R.layout.activity_main);
         startCameraThread();
         initCameraInfo();
+
         SurfaceView cameraPreview = findViewById(R.id.camera_preview);
         cameraPreview.getHolder().addCallback(new PreviewSurfaceCallback());
+
+        Button switchCameraButton = findViewById(R.id.switch_camera);
+        switchCameraButton.setOnClickListener(new OnSwitchCameraButtonClickListener());
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         stopCameraThread();
-        mCamera = null;
-        mCameraId = -1;
-        mCameraInfo = null;
     }
 
     @Override
@@ -115,19 +122,28 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
     }
 
     /**
-     * 获取要开启的相机 ID，如果当前已经有开启的相机，则返回与之相对的另一个相机 ID。
+     * 获取要开启的相机 ID，优先开启前置。
      */
     private int getCameraId() {
-        if (mCameraId == mFrontCameraId) {
-            return mBackCameraId;
-        } else if (mCameraId == mBackCameraId) {
-            return mFrontCameraId;
-        } else if (hasFrontCamera()) {
+        if (hasFrontCamera()) {
             return mFrontCameraId;
         } else if (hasBackCamera()) {
             return mBackCameraId;
         } else {
             throw new RuntimeException("No available camera id found.");
+        }
+    }
+
+    /**
+     * 切换前后置时切换ID
+     */
+    private int switchCameraId() {
+        if (mCameraId == mFrontCameraId && hasBackCamera()) {
+            return mBackCameraId;
+        } else if (mCameraId == mBackCameraId && hasFrontCamera()) {
+            return mFrontCameraId;
+        } else {
+            throw new RuntimeException("No available camera id to switch.");
         }
     }
 
@@ -208,7 +224,8 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
      */
     @WorkerThread
     private void openCamera(int cameraId) {
-        if (mCamera != null) {
+        Camera camera = mCamera;
+        if (camera != null) {
             throw new RuntimeException("You must close previous camera before open a new one.");
         }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
@@ -256,9 +273,12 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
      */
     @WorkerThread
     private void closeCamera() {
-        if (mCamera != null) {
-            mCamera.release();
-            mCamera = null;
+        Camera camera = mCamera;
+        mCamera = null;
+        if (camera != null) {
+            camera.release();
+            mCameraId = -1;
+            mCameraInfo = null;
         }
     }
 
@@ -270,14 +290,15 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
      */
     @WorkerThread
     private void setPreviewSize(int shortSide, int longSide) {
-        if (mCamera != null && shortSide != 0 && longSide != 0) {
+        Camera camera = mCamera;
+        if (camera != null && shortSide != 0 && longSide != 0) {
             float aspectRatio = (float) longSide / shortSide;
-            Camera.Parameters parameters = mCamera.getParameters();
+            Camera.Parameters parameters = camera.getParameters();
             List<Camera.Size> supportedPreviewSizes = parameters.getSupportedPreviewSizes();
             for (Camera.Size previewSize : supportedPreviewSizes) {
                 if ((float) previewSize.width / previewSize.height == aspectRatio && previewSize.height <= shortSide && previewSize.width <= longSide) {
                     parameters.setPreviewSize(previewSize.width, previewSize.height);
-                    mCamera.setParameters(parameters);
+                    camera.setParameters(parameters);
                     Log.d(TAG, "setPreviewSize() called with: width = " + previewSize.width + "; height = " + previewSize.height);
                     break;
                 }
@@ -290,9 +311,10 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
      */
     @WorkerThread
     private void setPreviewSurface(@Nullable SurfaceHolder previewSurface) {
-        if (mCamera != null && previewSurface != null) {
+        Camera camera = mCamera;
+        if (camera != null && previewSurface != null) {
             try {
-                mCamera.setPreviewDisplay(previewSurface);
+                camera.setPreviewDisplay(previewSurface);
                 Log.d(TAG, "setPreviewSurface() called");
             } catch (IOException e) {
                 e.printStackTrace();
@@ -305,8 +327,10 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
      */
     @WorkerThread
     private void startPreview() {
-        if (mCamera != null) {
-            mCamera.startPreview();
+        Camera camera = mCamera;
+        SurfaceHolder previewSurface = mPreviewSurface;
+        if (camera != null && previewSurface != null) {
+            camera.startPreview();
             Log.d(TAG, "startPreview() called");
         }
     }
@@ -316,8 +340,9 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
      */
     @WorkerThread
     private void stopPreview() {
-        if (mCamera != null) {
-            mCamera.stopPreview();
+        Camera camera = mCamera;
+        if (camera != null) {
+            camera.stopPreview();
             Log.d(TAG, "stopPreview() called");
         }
     }
@@ -341,10 +366,30 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
     }
 
     private void setupPreview(SurfaceHolder previewSurface, int surfaceWidth, int surfaceHeight) {
-        if (mCameraHandler != null) {
-            mCameraHandler.obtainMessage(MSG_SET_PREVIEW_SIZE, surfaceWidth, surfaceHeight).sendToTarget();
-            mCameraHandler.obtainMessage(MSG_SET_PREVIEW_SURFACE, previewSurface).sendToTarget();
-            mCameraHandler.sendEmptyMessage(MSG_START_PREVIEW);
+        Handler cameraHandler = mCameraHandler;
+        if (cameraHandler != null) {
+            cameraHandler.obtainMessage(MSG_SET_PREVIEW_SIZE, surfaceWidth, surfaceHeight).sendToTarget();
+            cameraHandler.obtainMessage(MSG_SET_PREVIEW_SURFACE, previewSurface).sendToTarget();
+            cameraHandler.sendEmptyMessage(MSG_START_PREVIEW);
+        }
+    }
+
+    private class OnSwitchCameraButtonClickListener implements View.OnClickListener {
+        @Override
+        public void onClick(View v) {
+            Handler cameraHandler = mCameraHandler;
+            SurfaceHolder previewSurface = mPreviewSurface;
+            int previewSurfaceWidth = mPreviewSurfaceWidth;
+            int previewSurfaceHeight = mPreviewSurfaceHeight;
+            if (cameraHandler != null && previewSurface != null) {
+                int cameraId = switchCameraId();// 切换摄像头 ID
+                cameraHandler.sendEmptyMessage(MSG_STOP_PREVIEW);// 停止预览
+                cameraHandler.sendEmptyMessage(MSG_CLOSE_CAMERA);// 关闭当前的摄像头
+                cameraHandler.obtainMessage(MSG_OPEN_CAMERA, cameraId, 0).sendToTarget();// 开启新的摄像头
+                cameraHandler.obtainMessage(MSG_SET_PREVIEW_SIZE, previewSurfaceWidth, previewSurfaceHeight).sendToTarget();// 配置预览尺寸
+                cameraHandler.obtainMessage(MSG_SET_PREVIEW_SURFACE, previewSurface).sendToTarget();// 配置预览 Surface
+                cameraHandler.sendEmptyMessage(MSG_START_PREVIEW);// 开启预览
+            }
         }
     }
 
@@ -356,11 +401,17 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
 
         @Override
         public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            mPreviewSurface = holder;
+            mPreviewSurfaceWidth = width;
+            mPreviewSurfaceHeight = height;
             setupPreview(holder, width, height);
         }
 
         @Override
         public void surfaceDestroyed(SurfaceHolder holder) {
+            mPreviewSurface = null;
+            mPreviewSurfaceWidth = 0;
+            mPreviewSurfaceHeight = 0;
         }
     }
 
