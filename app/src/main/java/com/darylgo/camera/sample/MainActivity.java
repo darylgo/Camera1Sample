@@ -54,11 +54,6 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
     private int mCameraId;
     private Camera.CameraInfo mCameraInfo;
 
-    private SurfaceView mCameraPreview;
-    private SurfaceHolder mPreviewSurface;
-    private int mPreviewSurfaceWidth = 0;
-    private int mPreviewSurfaceHeight = 0;
-
     @Override
     public boolean handleMessage(Message msg) {
         switch (msg.what) {
@@ -95,8 +90,8 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
         setContentView(R.layout.activity_main);
         startCameraThread();
         initCameraInfo();
-        mCameraPreview = findViewById(R.id.camera_preview);
-        mCameraPreview.getHolder().addCallback(new PreviewSurfaceCallback());
+        SurfaceView cameraPreview = findViewById(R.id.camera_preview);
+        cameraPreview.getHolder().addCallback(new PreviewSurfaceCallback());
     }
 
     @Override
@@ -284,6 +279,7 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
                     parameters.setPreviewSize(previewSize.width, previewSize.height);
                     mCamera.setParameters(parameters);
                     Log.d(TAG, "setPreviewSize() called with: width = " + previewSize.width + "; height = " + previewSize.height);
+                    break;
                 }
             }
         }
@@ -360,17 +356,11 @@ public class MainActivity extends AppCompatActivity implements Handler.Callback 
 
         @Override
         public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-            mPreviewSurface = holder;
-            mPreviewSurfaceWidth = width;
-            mPreviewSurfaceHeight = height;
             setupPreview(holder, width, height);
         }
 
         @Override
         public void surfaceDestroyed(SurfaceHolder holder) {
-            mPreviewSurface = null;
-            mPreviewSurfaceWidth = 0;
-            mPreviewSurfaceHeight = 0;
         }
     }
 
